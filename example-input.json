@@ -1,0 +1,9 @@
+[
+  { "type": "commit",   "id": "a", "message": "Initial commit" },
+  { "type": "commit",   "id": "b", "message": "Commit B",      "parents": ["a"] },
+  { "type": "commit",   "id": "c", "message": "Commit C",      "parents": ["a"] },
+  { "type": "commit",   "id": "d", "message": "Merge B and C", "parents": ["b", "c"], "tags": ["1.0.0"] },
+  { "type": "commit",   "id": "e", "message": "Commit E",      "parents": ["d"],      "branches": ["master"] },
+  { "type": "commit",   "id": "f", "message": "Commit F",      "parents": ["d"] },
+  { "type": "branch",   "name": "pull-request", "on": "f" }
+]

@@ -1,0 +1,22 @@
+[package]
+name = "rust"
+version = "0.1.0"
+authors = ["Danny Spencer <dan.spencer.np@gmail.com>"]
+edition = "2018"
+
+[dependencies.colored]
+version = "1.7"
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]
+
+[dependencies.serde_json]
+version = "1.0"
+
+[dependencies.git2]
+version = "0.8"
+
+# Exclude all the network-related features - we don't need them
+default-features = false
+features = []
