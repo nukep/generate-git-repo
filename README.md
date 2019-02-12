@@ -121,6 +121,18 @@ If you want to create branching commits that hop across different commit parents
 
 If you want to additionally populate each commit with different files, you'd also have to worry about the index (or resort to git plumbing commands like `git hash-object` and `git mktree`).
 
+## But I should be testing a logic layer in my program instead of the Git repository directly, right?
+
+So in other words: `[Mock Git DB] <-> [Logic] <-> [Tests]` instead of `[Actual Git DB] <-> [Logic] <-> [Tests]`
+
+And that's entirely valid.
+
+The reason you may decide not to do it this way is you'd need to create the mock in the first place. It's the exact same problem with unit-testing functions that call SQL databases - most people just end up standing up a local database and doing a minimal amount of tests to ensure that integration works. Sure, leave the domain logic to unit tests, but the integration testing has to happen somewhere.
+
+With Git, you'd need to reimplement all the stuff you're interested in: read commit logs, files, lists of branches, etc. And if your program calls the `git` commands directly, you might need to implement command-line arg parsing as well, or find some other way to abstract it in your program.
+
+
+
 ## Why Rust?
 
 I wanted a program that's standalone, portable across platforms, and not bound to any language runtime. It should additionaly not require interfacing with the `git` command (based on my own benchmarks, using `git` plumbing commands can be up to 6x slower for large repos!).
