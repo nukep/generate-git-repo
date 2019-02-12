@@ -1,3 +1,8 @@
+#[macro_use]
+extern crate clap;
+
+use clap::{Arg, App};
+
 use git2::{Repository, Error};
 use std::io::{self, Read};
 
@@ -7,8 +12,12 @@ use command::Command;
 mod interpreter;
 use interpreter::Interpreter;
 
-fn run(commands: &[Command]) -> Result<(), Error> {
-    let repo = Repository::init_bare("./my-repo")?;
+fn run(bare: bool, repo_path: &str, commands: &[Command]) -> Result<(), Error> {
+    let repo = if bare {
+        Repository::init_bare(repo_path)?
+    } else {
+        Repository::init(repo_path)?
+    };
 
     let mut interpreter = Interpreter::new(&repo)?;
 
@@ -16,36 +25,60 @@ fn run(commands: &[Command]) -> Result<(), Error> {
         interpreter.interpret_command(command)?;
     }
 
-    // println!("{:?}", interpreter.id_to_oid_lookup);
-
     Ok(())
 }
 
 fn main() {
-    // let read_from_stdin = false;
+    let matches = App::new("Generate Git repo")
+        .version(crate_version!())
+        .about("Generates a Git repo (duh). Project: https://github.com/nukep/generate-git-repo/")
 
-    // if read_from_stdin {
-    //     let input = {
-    //         let mut buffer = String::new();
-    //         io::stdin().read_to_string(&mut buffer)?;
-    //         buffer
-    //     };
+        // .arg(Arg::with_name("json-stream")
+        //     .long("json-stream")
+        //     .help("Reads the commands as streaming JSON values, as they arrive. Doesn't require a surrounding array."))
 
-    // }
-    // std::process::exit(1);
+        .arg(Arg::with_name("input")
+            .long("input")
+            .short("i")
+            .takes_value(true)
+            .help("Uses the provided file instead of standard input."))
 
-    let commands: Vec<Command> = serde_json::from_str(r#"[
-  { "type": "commit",   "id": "a", "message": "Initial commit" },
-  { "type": "commit",   "id": "b", "message": "Commit B",      "parents": ["a"] },
-  { "type": "commit",   "id": "c", "message": "Commit C",      "parents": ["a"] },
-  { "type": "commit",   "id": "d", "message": "Merge B and C", "parents": ["b", "c"], "tags": ["1.0.0"] },
-  { "type": "commit",   "id": "e", "message": "Commit E",      "parents": ["d"],      "branches": ["master"] },
-  { "type": "commit",   "id": "f", "message": "Commit F",      "parents": ["d"] },
-  { "type": "branch",   "name": "pull-request", "on": "f"}
+        .arg(Arg::with_name("bare")
+            .long("bare")
+            .help("Initializes a bare Git repository."))
 
-]"#).unwrap();
+        .arg(Arg::with_name("REPO_PATH")
+            .help("The path of the Git repository to write to. Creates it if it doesn't exist.")
+            .required(true))
 
-    match run(&commands) {
+        .get_matches();
+
+    let bare = matches.is_present("bare");
+    
+    let input: Option<&str> = matches.value_of("input");
+
+    let repo_path = matches.value_of("REPO_PATH").unwrap();
+
+    let commands: Vec<Command> = if let Some(input) = input {
+        use std::fs::File;
+        use std::io::BufReader;
+        // Read from a file
+        let file = File::open(input).unwrap();
+        let mut buf_reader = BufReader::new(file);
+        let mut contents = String::new();
+        buf_reader.read_to_string(&mut contents).unwrap();
+
+        serde_json::from_str(&contents).unwrap()
+    } else {
+        // Read from stdin
+
+        let mut contents = String::new();
+        io::stdin().read_to_string(&mut contents).unwrap();
+
+        serde_json::from_str(&contents).unwrap()
+    };
+
+    match run(bare, repo_path, &commands) {
         Ok(()) => {}
         Err(e) => println!("error: {}", e)
     };

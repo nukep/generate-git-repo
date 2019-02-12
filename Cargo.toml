@@ -1,8 +1,11 @@
 [package]
-name = "rust"
+name = "generate-git-repo"
 version = "0.1.0"
 authors = ["Danny Spencer <dan.spencer.np@gmail.com>"]
 edition = "2018"
+
+[dependencies.clap]
+version = "2.32"
 
 [dependencies.colored]
 version = "1.7"
