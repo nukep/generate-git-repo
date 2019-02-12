@@ -6,6 +6,16 @@ If you have tooling/scripts that read and interact with Git repositories, you mi
 
 ## Example
 
+CLI:
+
+```bash
+cat ./example-input.json | generate-git-repo --bare ./path-to-new-repo
+```
+
+Result:
+
+![Example](git-graph-example.png)
+
 example-input.json:
 
 ```json
@@ -20,15 +30,6 @@ example-input.json:
 ]
 ```
 
-CLI:
-
-```bash
-cat ./example-input.json | generate-git-repo --bare ./path-to-new-repo
-```
-
-Result:
-
-![Example](git-graph-example.png)
 
 ## Write a program to generate the input, and pipe it into `generate-git-repo`
 
@@ -128,11 +129,27 @@ The libgit2 bindings for Rust are quite solid, and it's used in popular projects
 
 # Building
 
-If libc fails to build, try installing gcc.
+You'll need Rust and Cargo installed on your machine. The easiest way to do this is with rustup:
+https://rustup.rs/
 
-Modes:
+## Dependencies
 
-* Streaming JSON commands
-* JSON array of commands (non-streamable)
-* DSL
-* 
+Cargo will handle all dependencies automatically. If there are problems building `git2`, it might be because of a missing C compiler. One way to quickly resolve these type of build errors may be to install `gcc`, `clang` or similar. See also: https://crates.io/crates/cc
+
+This project depends on `git2`: https://github.com/alexcrichton/git2-rs
+
+## Running locally
+
+The following will run a debug build.
+
+```
+cargo run -- <arguments go here>
+```
+
+## Installing locally
+
+The following comamnd will build the release binary and place it in a location controlled by Cargo. If Cargo was installed via rustup, this location should be in your PATH.
+
+```
+cargo install --path .
+```
