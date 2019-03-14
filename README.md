@@ -56,7 +56,7 @@ Fields:
 * `id` - Required. Commit identifier. This is NOT a Git commit hash, but rather a way for the generator to internally keep track of commits.
 * `message` - Optional. Commit message. Can be a single line, or multiple lines. If not specified, the message is the commit identifier.
 * `parents` - Optional. A list of parent commits. If not specified, creates an orphaned commit (i.e. for initial commits).
-* `tree` - Optional. A recursive object. It specifies the files and directories that should be in the commit. If not specified, the commit uses the default set of files (none by default).
+* `tree` - Optional. A object where the key is the path, and the value is the file contents. It specifies the files and directories that should be in the commit. If not specified, the commit uses the default set of files (none by default).
 * `branches` - Optional. A list of branch names. All listed branch names will be set to this commit. Branches can also be created in the `"type": "branch"` command.
 * `tags` - Optional. A list of tag names. All listed tag names will be set as lightweight tags to this commit. Tags can also be created in the `"type": "tag"` command.
 
@@ -72,10 +72,8 @@ Example:
   
   "tree": {
     "hello.txt": "world",
-    "directory": {
-      "foo.txt": "bar",
-      "fizz.txt": "buzz"
-    }
+    "directory/foo.txt": "bar",
+    "directory/fizz.txt": "buzz"
   }
 }
 ```

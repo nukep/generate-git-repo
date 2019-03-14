@@ -15,28 +15,106 @@ fn print_warning(message: &str) {
     println!("{}", message.color("yellow"));
 }
 
-fn create_tree(repo: &Repository, tree: &HashMap<String, TreeNode>) -> Result<Oid, Error> {
+#[derive(Debug)]
+enum FileToWrite {
+    File {
+        contents: Vec<u8>
+    },
+    Directory(HashMap<String, FileToWrite>)
+}
+
+fn split_path(path: &str) -> Vec<&str> {
+    path.split("/").collect()
+}
+
+fn add_to_files_to_write(files_to_write: &mut HashMap<String, FileToWrite>,
+                         full_path: &str,
+                         path_parts: &[&str],
+                         contents: Vec<u8>) {
+    
+    if path_parts.len() == 1 {
+        let name = path_parts[0];
+
+        if files_to_write.contains_key(name) {
+            // TODO: should be an error
+            panic!("File or directory already exists: {}", full_path);
+        }
+
+        // just write the file
+        files_to_write.insert(name.to_string(), FileToWrite::File { contents: contents });
+    } else if path_parts.len() > 1 {
+        let name = path_parts[0];
+        let tail = &path_parts[1..];
+
+        // if directory exists, use it
+        // otherwise, make it
+        if !files_to_write.contains_key(name) {
+            files_to_write.insert(name.to_string(), FileToWrite::Directory(HashMap::new()));
+        }
+
+        if let Some(directory) = files_to_write.get_mut(name) {
+            if let FileToWrite::Directory(hm) = directory {
+                add_to_files_to_write(hm, full_path, tail, contents);
+            } else {
+                // TODO: should be an error
+                // TODO: show full directory name
+                panic!("Already added as a non-directory: {}", name);
+            }
+        } else {
+            unreachable!();
+        }
+    } else {
+        panic!("Unexpected")
+    }
+}
+
+fn create_tree_recur(repo: &Repository, tree: &HashMap<String, FileToWrite>) -> Result<Oid, Error> {
+    // Git trees are recursive, so it's easy to use a recursive function to make them.
+
     let mut tree_builder = repo.treebuilder(None)?;
 
     for (name, node) in tree.iter() {
         match node {
-            TreeNode::File(contents) => {
-                let blob_oid = repo.blob(contents.as_bytes())?;
+            FileToWrite::File { contents } => {
+                let blob_oid = repo.blob(contents)?;
                 // File permissions: rw-r--r--
                 tree_builder.insert(name, blob_oid, 0o100644)?;
             },
-
-            TreeNode::Tree(subtree) => {
-                let subtree_oid = create_tree(repo, subtree)?;
+            FileToWrite::Directory(subtree) => {
+                let subtree_oid = create_tree_recur(repo, subtree)?;
                 // File permissions: directory flag
                 tree_builder.insert(name, subtree_oid, 0o040000)?;
-            }
+            },
         }
     }
 
     let tree_oid = tree_builder.write()?;
-
     Ok(tree_oid)
+}
+
+fn create_files_to_write(tree: &HashMap<String, TreeNode>) -> HashMap<String, FileToWrite> {
+    let mut files_to_write: HashMap<String, FileToWrite> = HashMap::new();
+
+    for (path, node) in tree.iter() {
+        // split path by slashes
+        let path_parts = split_path(path);
+
+        match node {
+            TreeNode::Utf8File(contents) => {
+                let contents_vec: Vec<u8> = contents.as_bytes().to_vec();
+                add_to_files_to_write(&mut files_to_write, path, &path_parts, contents_vec);
+            }
+        }
+    }
+
+    files_to_write
+}
+
+fn create_tree(repo: &Repository, tree: &HashMap<String, TreeNode>) -> Result<Oid, Error> {
+    let files_to_write = create_files_to_write(tree);
+
+    // build the tree objects once all the files are known
+    create_tree_recur(repo, &files_to_write)
 }
 
 pub struct Interpreter<'a> {
@@ -120,9 +198,16 @@ impl Interpreter<'_> {
                 let parent_objects: Vec<Commit> = parent_objects_result?;
                 let parent_objects_refs: Vec<&Commit> = parent_objects.iter().collect();
 
+                let used_message: &str = if let Some(ref m) = message {
+                    // Use the provided message
+                    m
+                } else {
+                    // Use the commit's ID as the message
+                    &id
+                };
 
                 // Commit!
-                let commit_oid = repo.commit(None, &author, &committer, message, &tree, &parent_objects_refs)?;
+                let commit_oid = repo.commit(None, &author, &committer, used_message, &tree, &parent_objects_refs)?;
                 self.set_oid(id.to_string(), commit_oid);
 
                 // Create branches
@@ -219,4 +304,23 @@ impl Interpreter<'_> {
         Ok(())
     }
 
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_path_test() {
+        assert_eq!(split_path(""),
+                   vec![""]);
+        
+        assert_eq!(split_path("path"),
+                   vec!["path"]);
+        
+        assert_eq!(split_path("path/to/file"),
+                   vec!["path", "to", "file"]);
+    }
 }

@@ -2,15 +2,15 @@ use serde::{Deserialize};
 use std::collections::HashMap;
 
 // Used as serde deserialization defaults
-fn empty_string() -> String { "".to_string() }
 fn empty_vec_string() -> Vec<String> { vec![] }
 fn false_boolean() -> bool { false }
 
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum TreeNode {
-  File(String),
-  Tree(HashMap<String, TreeNode>)
+  Utf8File(String),
+  
+  // possible feature: accept an object with arguments, such as file permissions
 }
 
 
@@ -22,8 +22,7 @@ pub enum Command {
     Commit {
         id: String,
 
-        #[serde(default = "empty_string")]
-        message: String,
+        message: Option<String>,
 
         #[serde(default = "empty_vec_string")]
         parents: Vec<String>,
