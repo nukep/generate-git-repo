@@ -34,6 +34,16 @@ pub enum Command {
         tags:     Option<Vec<String>>
     },
 
+    #[serde(rename = "merge")]
+    Merge {
+        id: String,
+
+        from: String,
+        to: Vec<String>,
+
+        // Disable fast-forward merges. Fast-forward is enabled by default.
+        no_ff: bool,
+    },
     
     #[serde(rename = "branch")]
     Branch {

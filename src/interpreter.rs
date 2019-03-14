@@ -1,9 +1,11 @@
 use git2::{Repository, Signature, Error, Oid, Commit, Tree};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::borrow::Cow;
 
 use super::command::Command;
 use super::command::TreeNode;
+use super::can_fastforward::can_fastforward;
 
 const DEFAULT_NAME: &'static str  = "generate-git-repo";
 const DEFAULT_EMAIL: &'static str = "generate-git-repo@example.org";
@@ -117,10 +119,31 @@ fn create_tree(repo: &Repository, tree: &HashMap<String, TreeNode>) -> Result<Oi
     create_tree_recur(repo, &files_to_write)
 }
 
+fn is_parent(parent: &str, child: &str, parent_to_child_ids: &HashMap<String, HashSet<String>>) -> bool {
+    for (a, b) in parent_to_child_ids {
+        if a != parent { continue }
+
+        for p in b {
+            if is_parent(p, child, parent_to_child_ids) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn duplicate_commit(commit: &str, to: &str, parent_to_child_ids: &mut HashMap<String, HashSet<String>>) {
+    for (a, b) in parent_to_child_ids {
+        // TODO
+    }
+}
+
 pub struct Interpreter<'a> {
     repo: &'a Repository,
 
     id_to_oid_lookup: HashMap<String, Oid>,
+    parent_to_child_ids: HashMap<String, HashSet<String>>,
 
     default_author_name: String,
     default_author_email: String,
@@ -141,6 +164,7 @@ impl Interpreter<'_> {
         Ok(Interpreter {
             repo,
             id_to_oid_lookup: HashMap::new(),
+            parent_to_child_ids: HashMap::new(),
 
             default_author_name:  DEFAULT_NAME.to_string(),
             default_author_email: DEFAULT_EMAIL.to_string(),
@@ -165,6 +189,15 @@ impl Interpreter<'_> {
 
     fn set_oid(&mut self, id: String, oid: Oid) {
         self.id_to_oid_lookup.insert(id, oid);
+    }
+
+    fn set_parent_to_child(&mut self, parent: String, child: String) {
+        if !self.parent_to_child_ids.contains_key(&parent) {
+            self.parent_to_child_ids.insert(parent.clone(), HashSet::new());
+        }
+
+        let children = self.parent_to_child_ids.get_mut(&parent).unwrap();
+        children.insert(child);
     }
 
     pub fn interpret_command(&mut self, command: &Command) -> Result<(), Error> {
@@ -209,6 +242,9 @@ impl Interpreter<'_> {
                 // Commit!
                 let commit_oid = repo.commit(None, &author, &committer, used_message, &tree, &parent_objects_refs)?;
                 self.set_oid(id.to_string(), commit_oid);
+                for parent in parents {
+                    self.set_parent_to_child(parent.to_string(), id.to_string());
+                }
 
                 // Create branches
                 if let Some(branches) = branches {
@@ -225,6 +261,34 @@ impl Interpreter<'_> {
                         repo.tag_lightweight(name, &commit, true /* force, even if tag exists */)?;
                     }
                 }
+            },
+            
+            Command::Merge { id, from, to, no_ff } => {
+                let set_of_commits = HashSet::new();
+
+
+                // None: don't fast-forward
+                // Some(id): yes, and fast-forward to this id
+                let should_ff = if no_ff {
+                    None
+                } else {
+                    Some(can_fastforward(set_of_commits, |parent, child| {
+                        is_parent(parent, child, self.parent_to_child_ids)
+                    }))
+                };
+
+                if let Some(to_id) = should_ff {
+                    // Fast-forward
+
+                    self.set_oid(id, self.get_oid(to_id).unwrap());
+                    duplicate_commit(to_id, id, self.parent_to_child_ids);
+
+                } else {
+                    // Create a merge commit
+                }
+
+
+
             },
             
             Command::Branch { name, on } => {

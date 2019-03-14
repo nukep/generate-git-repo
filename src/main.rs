@@ -12,6 +12,8 @@ use command::Command;
 mod interpreter;
 use interpreter::Interpreter;
 
+mod can_fastforward;
+
 fn run(bare: bool, repo_path: &str, commands: &[Command]) -> Result<(), Error> {
     let repo = if bare {
         Repository::init_bare(repo_path)?
