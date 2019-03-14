@@ -1,9 +1,11 @@
 use git2::{Repository, Signature, Error, Oid, Commit, Tree};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::borrow::Cow;
 
 use super::command::Command;
 use super::command::TreeNode;
+use super::can_fastforward::can_fastforward;
 
 const DEFAULT_NAME: &'static str  = "generate-git-repo";
 const DEFAULT_EMAIL: &'static str = "generate-git-repo@example.org";
@@ -117,10 +119,28 @@ fn create_tree(repo: &Repository, tree: &HashMap<String, TreeNode>) -> Result<Oi
     create_tree_recur(repo, &files_to_write)
 }
 
+fn is_parent(parent: Oid, child: Oid, parent_to_child_ids: &HashMap<Oid, HashSet<Oid>>) -> bool {
+    if parent == child { return true }
+
+    for (a, b) in parent_to_child_ids {
+        if *a != parent { continue }
+
+        for p in b {
+            if is_parent(*p, child, parent_to_child_ids) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 pub struct Interpreter<'a> {
     repo: &'a Repository,
 
+    // an Oid can be associated with one or more ids
     id_to_oid_lookup: HashMap<String, Oid>,
+    parent_to_child_ids: HashMap<Oid, HashSet<Oid>>,
 
     default_author_name: String,
     default_author_email: String,
@@ -141,6 +161,7 @@ impl Interpreter<'_> {
         Ok(Interpreter {
             repo,
             id_to_oid_lookup: HashMap::new(),
+            parent_to_child_ids: HashMap::new(),
 
             default_author_name:  DEFAULT_NAME.to_string(),
             default_author_email: DEFAULT_EMAIL.to_string(),
@@ -167,36 +188,57 @@ impl Interpreter<'_> {
         self.id_to_oid_lookup.insert(id, oid);
     }
 
+    fn set_parent_to_child(&mut self, parent: Oid, child: Oid) {
+        if !self.parent_to_child_ids.contains_key(&parent) {
+            self.parent_to_child_ids.insert(parent, HashSet::new());
+        }
+
+        let children = self.parent_to_child_ids.get_mut(&parent).unwrap();
+        children.insert(child);
+    }
+
+    fn commit(&mut self, id: &str, parent_oids: &[Oid], message: &str, tree: &Option<HashMap<String, TreeNode>>) -> Result<Oid, Error> {
+        let repo = self.repo;
+
+        let tree = if let Some(tree) = tree {
+            // If a tree was provided, build it.
+            // It's a new value that gets freed at the end of this fn, so it's Cow::Owned
+            let tree_oid = create_tree(repo, tree)?;
+            Cow::Owned(repo.find_tree(tree_oid)?)
+        } else {
+            // If no tree was provided, use the default tree.
+            // It's an existing ref, so it's Cow::Borrowed
+            Cow::Borrowed(&self.default_tree)
+        };
+
+        let author    = Signature::now(&self.default_author_name, &self.default_author_email)?;
+        let committer = Signature::now(&self.default_committer_name, &self.default_committer_email)?;
+
+        let parent_objects_result: Result<Vec<Commit>, Error> = parent_oids.iter().map(|oid| {
+            repo.find_commit(*oid)
+        }).collect();
+        let parent_objects: Vec<Commit> = parent_objects_result?;
+        let parent_objects_refs: Vec<&Commit> = parent_objects.iter().collect();
+
+        let commit_oid = repo.commit(None, &author, &committer, message, &tree, &parent_objects_refs)?;
+
+        self.set_oid(id.to_string(), commit_oid);
+        for parent_oid in parent_oids {
+            self.set_parent_to_child(*parent_oid, commit_oid);
+        }
+
+        Ok(commit_oid)
+    }
+
     pub fn interpret_command(&mut self, command: &Command) -> Result<(), Error> {
         let repo = self.repo;
 
         match &command {
             Command::Commit { id, message, parents, tree, branches, tags } => {
-                // Build the commit's tree
-                let tree: Cow<Tree> = if let Some(tree) = tree {
-                    // If a tree was provided, build it.
-                    // It's a new value that gets freed at the end of this fn, so it's Cow::Owned
-                    let tree_oid = create_tree(repo, tree)?;
-                    Cow::Owned(repo.find_tree(tree_oid)?)
-                } else {
-                    // If no tree was provided, use the default tree.
-                    // It's an existing ref, so it's Cow::Borrowed
-                    Cow::Borrowed(&self.default_tree)
-                };
-                
-
-                let author    = Signature::now(&self.default_author_name, &self.default_author_email)?;
-                let committer = Signature::now(&self.default_committer_name, &self.default_committer_email)?;
-
                 // Resolve { parents: [...] } to git2-rs Commit objects
                 let parent_oids: Vec<Oid> = parents.iter().flat_map(|parent_id| {
                     self.get_oid(parent_id)
                 }).collect();
-                let parent_objects_result: Result<Vec<Commit>, Error> = parent_oids.into_iter().map(|oid| {
-                    repo.find_commit(oid)
-                }).collect();
-                let parent_objects: Vec<Commit> = parent_objects_result?;
-                let parent_objects_refs: Vec<&Commit> = parent_objects.iter().collect();
 
                 let used_message: &str = if let Some(ref m) = message {
                     // Use the provided message
@@ -207,8 +249,68 @@ impl Interpreter<'_> {
                 };
 
                 // Commit!
-                let commit_oid = repo.commit(None, &author, &committer, used_message, &tree, &parent_objects_refs)?;
-                self.set_oid(id.to_string(), commit_oid);
+                let commit_oid = self.commit(id, &parent_oids, used_message, tree)?;
+
+                // Create branches
+                if let Some(branches) = branches {
+                    let commit = repo.find_commit(commit_oid)?;
+                    for name in branches {
+                        repo.branch(name, &commit, true /* force, even if branch exists */)?;
+                    }
+                }
+
+                // Create lightweight tags
+                if let Some(tags) = tags {
+                    let commit = repo.find_object(commit_oid, None)?;
+                    for name in tags {
+                        repo.tag_lightweight(name, &commit, true /* force, even if tag exists */)?;
+                    }
+                }
+            },
+            
+            Command::Merge { id, from, to, message, tree, branches, tags, no_ff } => {
+                let mut set_of_oids = HashSet::new();
+                set_of_oids.insert(self.get_oid(from).unwrap());
+                for to_id in to {
+                    set_of_oids.insert(self.get_oid(to_id).unwrap());
+                }
+
+                let vec_of_oids: Vec<Oid> = set_of_oids.into_iter().collect();
+
+                // None: don't fast-forward
+                // Some(to_oid): yes, and fast-forward to this oid
+                let should_ff = if *no_ff {
+                    None
+                } else {
+                    can_fastforward(&vec_of_oids, |parent, child| {
+                        is_parent(parent, child, &self.parent_to_child_ids)
+                    })
+                };
+
+                let commit_oid = if let Some(to_oid) = should_ff {
+                    // Fast-forward
+                    self.set_oid(id.to_string(), to_oid);
+
+                    to_oid
+                } else {
+                    // Create a merge commit
+
+                    let used_message = if let Some(message) = message {
+                        message.to_string()
+                    } else {
+                        // ["a", "b", "c", "foo"]
+                        // => "'a', 'b', 'c', 'foo'"
+                        let to_list: String = to.iter()
+                            .map(|s| format!("'{}'", s))
+                            .collect::<Vec<String>>()
+                            .join(", ");
+
+                        format!("Merge commit '{}' to {}", from, to_list)
+                    };
+
+                    // Commit!
+                    self.commit(id, &vec_of_oids, &used_message, tree)?
+                };
 
                 // Create branches
                 if let Some(branches) = branches {

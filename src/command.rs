@@ -34,6 +34,25 @@ pub enum Command {
         tags:     Option<Vec<String>>
     },
 
+    #[serde(rename = "merge")]
+    Merge {
+        id: String,
+
+        from: String,
+        to: Vec<String>,
+
+        // Only used if a merge commit is made
+        message: Option<String>,
+        tree: Option<HashMap<String, TreeNode>>,
+
+        // If these are set, assign branches/tags to the commit
+        branches: Option<Vec<String>>,
+        tags:     Option<Vec<String>>,
+
+        // Disable fast-forward merges. Fast-forward is enabled by default.
+        #[serde(default = "false_boolean")]
+        no_ff: bool,
+    },
     
     #[serde(rename = "branch")]
     Branch {

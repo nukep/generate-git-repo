@@ -108,6 +108,22 @@ Other fields:
 
 * `tree` - Optional. A recursive object. Sets the default tree. (see `"type": "commit"` documentation)
 
+### `"type": "merge"`
+
+Merges a commit with one or more other commits. Fast-forwards by default.
+
+Commit fields:
+
+* `id` - Required. Commit identifier. This is NOT a Git commit hash, but rather a way for the generator to internally keep track of commits.
+* `from` - Required. The commit to merge from.
+* `to` - Required. A list of commits to merge to. Can be empty, but is usually one or more commits.
+* `message` - Optional. Only used for merge commits, ignored for fast-forwards. Commit message. Can be a single line, or multiple lines. If not specified, the message is `Merge commit '<from>' to '<to>', ...`.
+* `tree` - Optional. Only used for merge commits, ignored for fast-forwards. A object where the key is the path, and the value is the file contents. It specifies the files and directories that should be in the commit. If not specified, the commit uses the default set of files (none by default).
+* `branches` - Optional. A list of branch names. All listed branch names will be set to this commit. Branches can also be created in the `"type": "branch"` command.
+* `tags` - Optional. A list of tag names. All listed tag names will be set as lightweight tags to this commit. Tags can also be created in the `"type": "tag"` command.
+* `no_ff` - Optional. If set to true, will always create a merge commit (disables fast-forward merges). Fast-forwards are enabled by default (i.e. `"no_ff": false`).
+
+
 # "FAQ"
 
 ## Couldn't I just run a bunch of git commands to generate a test repo?
