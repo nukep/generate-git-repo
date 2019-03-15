@@ -268,11 +268,14 @@ impl Interpreter<'_> {
                 }
             },
             
-            Command::Merge { id, from, to, message, tree, branches, tags, no_ff } => {
+            Command::Merge { id, commits, message, tree, branches, tags, no_ff } => {
+                if commits.is_empty() {
+                    panic!("Commits cannot be empty");
+                }
+
                 let mut set_of_oids = HashSet::new();
-                set_of_oids.insert(self.get_oid(from).unwrap());
-                for to_id in to {
-                    set_of_oids.insert(self.get_oid(to_id).unwrap());
+                for c_id in commits {
+                    set_of_oids.insert(self.get_oid(c_id).unwrap());
                 }
 
                 let vec_of_oids: Vec<Oid> = set_of_oids.into_iter().collect();
@@ -300,12 +303,12 @@ impl Interpreter<'_> {
                     } else {
                         // ["a", "b", "c", "foo"]
                         // => "'a', 'b', 'c', 'foo'"
-                        let to_list: String = to.iter()
+                        let list: String = commits.iter()
                             .map(|s| format!("'{}'", s))
                             .collect::<Vec<String>>()
                             .join(", ");
 
-                        format!("Merge commit '{}' to {}", from, to_list)
+                        format!("Merge commits {}", list)
                     };
 
                     // Commit!

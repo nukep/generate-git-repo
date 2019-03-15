@@ -38,8 +38,7 @@ pub enum Command {
     Merge {
         id: String,
 
-        from: String,
-        to: Vec<String>,
+        commits: Vec<String>,
 
         // Only used if a merge commit is made
         message: Option<String>,
