@@ -25,6 +25,7 @@ example-input.json:
   { "type": "commit",   "id": "c", "message": "Commit C",      "parents": ["a"] },
   { "type": "merge",    "id": "d", "commits": ["b", "c"],      "tags": ["1.0.0"] },
   { "type": "commit",   "id": "e", "message": "Commit E",      "parents": ["d"],      "branches": ["master"] },
+  { "type": "config",   "all_name": "Danny", "all_email": "danny@example.org" },
   { "type": "commit",   "id": "f", "message": "Commit F",      "parents": ["d"] },
   { "type": "branch",   "name": "pull-request", "on": "f" }
 ]
